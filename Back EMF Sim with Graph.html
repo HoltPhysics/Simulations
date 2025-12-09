@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DC Motor & Back EMF Simulation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+        
+        canvas {
+            background-color: #1e293b;
+            border-radius: 0.5rem;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        .meter-bg {
+            background: #334155;
+            height: 14px; /* Slightly taller for larger UI */
+            border-radius: 7px;
+            overflow: hidden;
+        }
+
+        .meter-fill {
+            height: 100%;
+            transition: width 0.1s linear, background-color 0.3s;
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none; 
+            background: transparent; 
+        }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px; /* Larger thumb */
+            width: 24px;
+            border-radius: 50%;
+            background: #60a5fa;
+            cursor: pointer;
+            margin-top: -10px; 
+            box-shadow: 0 0 10px rgba(96, 165, 250, 0.5);
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px; /* Thicker track */
+            cursor: pointer;
+            background: #475569;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-6">
+
+    <!-- Header -->
+    <header class="w-full max-w-4xl mb-6 flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-blue-400">DC Motor Simulation</h1>
+            <p class="text-white text-base">Visualizing Back EMF</p>
+        </div>
+    </header>
+
+    <!-- Main Display -->
+    <main class="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Canvas Area -->
+        <div class="lg:col-span-2 flex flex-col gap-4">
+            <div class="relative">
+                <canvas id="simCanvas" width="600" height="400" class="w-full h-auto border border-slate-700"></canvas>
+            </div>
+            
+            <!-- Controls -->
+            <div class="flex gap-4 w-full">
+                <button id="powerBtn" class="flex-1 px-8 py-3 rounded-lg font-bold text-lg transition-all shadow-lg bg-red-500 hover:bg-red-600 text-white border-b-4 border-red-700 active:border-b-0 active:translate-y-1">
+                    POWER: OFF
+                </button>
+                <button id="pauseBtn" class="flex-1 px-8 py-3 rounded-lg font-bold text-lg transition-all shadow-lg bg-slate-600 hover:bg-slate-500 text-white border-b-4 border-slate-800 active:border-b-0 active:translate-y-1">
+                    PAUSE
+                </button>
+            </div>
+
+            <!-- Load Control Slider -->
+            <div class="bg-slate-800 p-5 rounded-lg border border-slate-700">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="font-bold text-white text-lg">Mechanical Load</span>
+                    <span id="loadVal" class="mono text-blue-400 text-base">Low</span>
+                </div>
+                <input type="range" id="loadSlider" min="0" max="100" value="20" class="w-full">
+                <div class="flex justify-between text-sm text-white mt-2">
+                    <span>Free Spin</span>
+                    <span>Stalled (Max Load)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard / Stats -->
+        <div class="flex flex-col gap-4">
+            
+            <!-- Live Data Card (Compacted) -->
+            <div class="bg-slate-800 p-5 rounded-lg border border-slate-700 shadow-xl">
+                <h2 class="text-xl font-bold mb-3 border-b border-slate-700 pb-2 text-white">Live Readings</h2>
+                
+                <!-- RPM -->
+                <div class="mb-3">
+                    <div class="flex justify-between mb-1">
+                        <span class="text-white text-sm uppercase tracking-wider">Motor Speed</span>
+                        <span id="rpmVal" class="mono font-bold text-blue-400 text-xl">0 RPM</span>
+                    </div>
+                    <div class="meter-bg">
+                        <div id="rpmBar" class="meter-fill bg-blue-500" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Voltage Equation Visual -->
+                <div class="bg-slate-900/50 p-3 rounded mb-3 font-mono text-base border border-slate-700/50">
+                    <div class="flex justify-between text-sm text-white mb-2">
+                        <span class="w-1/2 text-left">Source (V<sub>app</sub>)</span>
+                        <span class="w-1/2 text-right">Back EMF (&epsilon;<sub>back</sub>)</span>
+                    </div>
+                    <div class="flex items-center justify-between font-bold">
+                        <span class="text-green-400 text-4xl" id="vSourceVal">12.0V</span>
+                        <span class="text-white text-2xl">-</span>
+                        <span class="text-red-400 text-4xl" id="vEmfVal">0.0V</span>
+                    </div>
+                    <div class="w-full h-px bg-slate-600 my-2"></div>
+                    <div class="flex justify-between items-end">
+                        <span class="text-sm text-white">Net Voltage:</span>
+                        <span class="text-yellow-400 text-2xl" id="vNetVal">12.0V</span>
+                    </div>
+                </div>
+
+                <!-- Current (Bidirectional) -->
+                <div class="mb-3">
+                    <div class="flex justify-between mb-1">
+                        <span class="text-white text-sm uppercase tracking-wider">Current (Amps)</span>
+                        <span id="currentVal" class="mono font-bold text-yellow-400 text-xl">0.00 A</span>
+                    </div>
+                    <div class="relative h-4 bg-slate-700 rounded-full overflow-hidden">
+                        <div class="absolute left-1/2 top-0 bottom-0 w-0.5 bg-slate-500 z-10 -translate-x-1/2"></div>
+                        <div id="currentBar" class="absolute top-0 bottom-0 bg-yellow-400 transition-all duration-75 ease-out" style="left: 50%; width: 0%"></div>
+                    </div>
+                    <div class="flex justify-between text-xs text-slate-500 mt-1 font-mono">
+                        <span>-12A</span>
+                        <span>0</span>
+                        <span>+12A</span>
+                    </div>
+                </div>
+
+                <!-- Torque Reading -->
+                <div class="mb-1">
+                    <div class="flex justify-between items-end border-t border-slate-700 pt-2">
+                        <span class="text-white text-sm uppercase tracking-wider">Torque</span>
+                        <span id="torqueVal" class="mono font-bold text-blue-300 text-xl">0.00 Nm</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Controls Panel (Compacted) -->
+            <div class="bg-slate-800 p-5 rounded-lg border border-slate-700">
+                <h2 class="text-xl font-bold mb-3 border-b border-slate-700 pb-2 text-white">Motor Specs</h2>
+                <div class="space-y-2 text-base">
+                    <div class="flex justify-between">
+                        <span class="text-white">Source Voltage (V<sub>app</sub>)</span>
+                        <span class="mono text-white">12V</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-white">Coil Resistance (r)</span>
+                        <span class="mono text-white">1.0 Ω</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Oscilloscope Graph (Full Width) -->
+        <div class="lg:col-span-3 w-full bg-slate-800 p-6 rounded-lg border border-slate-700">
+            <h2 class="text-xl font-bold mb-4 text-white">Current</h2>
+            <div class="relative w-full h-48 bg-slate-900 rounded border border-slate-700">
+                <canvas id="graphCanvas" class="w-full h-full block"></canvas>
+                <!-- Labels -->
+                <div class="absolute top-2 left-2 text-xs text-yellow-400 font-mono">+15A</div>
+                <div class="absolute bottom-2 left-2 text-xs text-yellow-400 font-mono">-15A</div>
+                <div class="absolute top-1/2 left-2 -translate-y-1/2 text-xs text-slate-500 font-mono">0A</div>
+                <div class="absolute bottom-2 right-2 text-xs text-slate-500 font-mono">5s window</div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- Configuration & Constants ---
+        const CONSTANTS = {
+            voltage: 12.0,      // Volts
+            resistance: 1.0,    // Ohms
+            k_emf: 0.8,         // Back EMF Constant (Reduced from 1.5 to increase speed)
+            k_torque: 0.8,      // Torque Constant (Reduced to match)
+            inertia: 1.0,       // Rotor Inertia (Reduced from 2.0 to 1.0 for faster acceleration)
+            // dt is now dynamic!
+            historyPoints: 300  // 5 seconds @ 60fps
+        };
+
+        // --- State ---
+        let state = {
+            on: false,
+            paused: false,
+            angularVelocity: 0, // rad/s
+            angle: 0,           // radians
+            current: 0,         // Amps
+            backEMF: 0,         // Volts
+            netVoltage: 0,      // Volts
+            torque: 0,          // Nm
+            electronOffset: 0,  // For animation
+            friction: 0.65,     // Dynamic friction based on slider
+            isStalled: false,   // Track if manually stalled
+            history: [],        // Array for graph data
+            lastGraphTime: 0,   // Track last update for throttling
+            lastFrameTime: 0    // Track physics delta
+        };
+
+        // Pre-fill history with zeros
+        for(let i=0; i<CONSTANTS.historyPoints; i++) state.history.push(0);
+
+        // --- DOM Elements ---
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const graphCanvas = document.getElementById('graphCanvas');
+        const graphCtx = graphCanvas.getContext('2d');
+        const powerBtn = document.getElementById('powerBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const loadSlider = document.getElementById('loadSlider');
+        const loadVal = document.getElementById('loadVal');
+        
+        const ui = {
+            rpm: document.getElementById('rpmVal'),
+            rpmBar: document.getElementById('rpmBar'),
+            vSource: document.getElementById('vSourceVal'),
+            vEmf: document.getElementById('vEmfVal'),
+            vNet: document.getElementById('vNetVal'),
+            current: document.getElementById('currentVal'),
+            currentBar: document.getElementById('currentBar'),
+            torque: document.getElementById('torqueVal')
+        };
+
+        // Resize graph canvas resolution to match display size
+        function resizeGraph() {
+            graphCanvas.width = graphCanvas.clientWidth;
+            graphCanvas.height = graphCanvas.clientHeight;
+        }
+        window.addEventListener('resize', resizeGraph);
+        resizeGraph(); // Initial call
+
+        // --- Event Listeners ---
+        powerBtn.addEventListener('click', () => {
+            state.on = !state.on;
+            if(state.on) {
+                powerBtn.innerText = "POWER: ON";
+                powerBtn.classList.remove('bg-red-500', 'border-red-700', 'hover:bg-red-600');
+                powerBtn.classList.add('bg-green-500', 'border-green-700', 'hover:bg-green-600');
+            } else {
+                powerBtn.innerText = "POWER: OFF";
+                powerBtn.classList.remove('bg-green-500', 'border-green-700', 'hover:bg-green-600');
+                powerBtn.classList.add('bg-red-500', 'border-red-700', 'hover:bg-red-600');
+            }
+        });
+
+        pauseBtn.addEventListener('click', () => {
+            state.paused = !state.paused;
+            pauseBtn.innerText = state.paused ? "RESUME" : "PAUSE";
+            pauseBtn.classList.toggle('bg-yellow-600');
+            pauseBtn.classList.toggle('border-yellow-800');
+            pauseBtn.classList.toggle('bg-slate-600');
+            pauseBtn.classList.toggle('border-slate-800');
+        });
+
+        loadSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            // Map 0-100 to friction coefficient range
+            // Reduced base friction from 0.5 to 0.2 to help with speed increase
+            state.friction = 0.2 + Math.pow(val / 100, 3) * 30;
+            
+            // Stalled condition at max slider
+            state.isStalled = (val >= 100);
+
+            if(val < 25) loadVal.innerText = "Low";
+            else if(val < 75) loadVal.innerText = "Medium";
+            else if(val >= 100) loadVal.innerText = "Stalled";
+            else loadVal.innerText = "High";
+        });
+
+        // --- Physics Engine ---
+        function updatePhysics(dt) {
+            if (state.paused) return;
+
+            // Handle Stalled State (Force stop)
+            if (state.isStalled) {
+                state.angularVelocity = 0;
+            }
+
+            // 1. Calculate Back EMF (proportional to speed)
+            state.backEMF = state.angularVelocity * CONSTANTS.k_emf;
+
+            // 2. Calculate Net Voltage
+            let effectiveSource = state.on ? CONSTANTS.voltage : 0;
+            
+            // Allow current to flow even if OFF (Generator Mode / Regenerative Braking)
+            state.netVoltage = effectiveSource - state.backEMF;
+            
+            state.current = state.netVoltage / CONSTANTS.resistance;
+
+            // Only update mechanical physics if NOT stalled
+            if (!state.isStalled) {
+                // 3. Calculate Torque
+                // Torque is directly proportional to current
+                let motorTorque = state.current * CONSTANTS.k_torque;
+                state.torque = motorTorque; 
+
+                // 4. Net Torque (Motor Torque - Friction)
+                let frictionTorque = state.angularVelocity * state.friction;
+                let netTorque = motorTorque - frictionTorque;
+
+                // 5. Update Velocity (Using variable dt)
+                let alpha = netTorque / CONSTANTS.inertia;
+                state.angularVelocity += alpha * dt;
+
+                if (state.angularVelocity < 0) state.angularVelocity = 0;
+
+                // 6. Update Position (Using variable dt)
+                state.angle += state.angularVelocity * dt;
+            } else {
+                // Calculate torque even when stalled (Stall Torque)
+                state.torque = state.current * CONSTANTS.k_torque;
+            }
+            
+            // 7. Update Animation Offset for electrons
+            // Scale offset by dt to keep animation speed consistent
+            state.electronOffset += state.current * (50 * dt); 
+
+            // 8. Update History Graph Data
+            // Throttle to ~60Hz (every 16ms)
+            const now = performance.now();
+            if (now - state.lastGraphTime >= 16) {
+                state.history.push(state.current);
+                if (state.history.length > CONSTANTS.historyPoints) {
+                    state.history.shift();
+                }
+                state.lastGraphTime = now;
+            }
+        }
+
+        // --- Render Functions ---
+
+        function drawCircuit(ctx) {
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w/2;
+            const cy = h/2;
+            const motorShiftX = 60; // Shift amount for motor
+
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#475569'; // Wire color inactive
+            
+            // Wire Path
+            const wirePath = new Path2D();
+            // Battery positive (left) to Motor top
+            wirePath.moveTo(50, cy - 50); 
+            wirePath.lineTo(50, 50);
+            wirePath.lineTo(cx + motorShiftX, 50); // Shifted right
+            wirePath.lineTo(cx + motorShiftX, cy - 80); // To brush top, shifted
+
+            // Motor bottom to Battery negative
+            wirePath.moveTo(cx + motorShiftX, cy + 80); // From brush bottom, shifted
+            wirePath.lineTo(cx + motorShiftX, h - 50); // Shifted right
+            wirePath.lineTo(50, h - 50);
+            wirePath.lineTo(50, cy + 50);
+            
+            // Battery Graphic
+            ctx.stroke(wirePath);
+
+            // Draw Battery Symbol
+            ctx.beginPath();
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.lineWidth = 2;
+            ctx.moveTo(30, cy - 20); ctx.lineTo(70, cy - 20);
+            ctx.moveTo(40, cy + 20); ctx.lineTo(60, cy + 20);
+            ctx.stroke();
+            
+            // Connecting battery internals
+            ctx.beginPath();
+            ctx.moveTo(50, cy-50); ctx.lineTo(50, cy-20);
+            ctx.moveTo(50, cy+50); ctx.lineTo(50, cy+20);
+            ctx.stroke();
+
+            // Labels - INCREASED FONT SIZE
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '16px sans-serif';
+            ctx.textBaseline = 'middle'; // Center vertically
+            ctx.fillText("12V DC", 20, cy);
+            ctx.textBaseline = 'alphabetic'; // Reset baseline
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '14px sans-serif'; 
+            ctx.fillText("+", 60, cy - 30);
+            ctx.fillText("-", 60, cy + 40);
+        }
+
+        function drawElectrons(ctx) {
+            // Only draw if there is current (allow negative current for generator)
+            if (Math.abs(state.current) < 0.01) return;
+
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w/2;
+            const cy = h/2;
+            const motorShiftX = 60; // Match circuit shift
+
+            // Defined from Top (+ terminal side) to Bottom (- terminal side)
+            const pathPoints = [
+                {x: 50, y: cy-40}, {x: 50, y: 50}, {x: cx + motorShiftX, y: 50}, {x: cx + motorShiftX, y: cy-70},
+            ];
+            const returnPoints = [
+                {x: cx + motorShiftX, y: cy+70}, {x: cx + motorShiftX, y: h-50}, {x: 50, y: h-50}, {x: 50, y: cy+40}
+            ];
+
+            ctx.fillStyle = '#facc15'; 
+            
+            const drawDots = (points, offset) => {
+                let totalDist = 0;
+                let lengths = [];
+                for(let i=0; i<points.length-1; i++){
+                    let dx = points[i+1].x - points[i].x;
+                    let dy = points[i+1].y - points[i].y;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    lengths.push(dist);
+                    totalDist += dist;
+                }
+
+                const spacing = 40;
+                const count = Math.floor(totalDist / spacing);
+
+                for(let i=0; i<count; i++) {
+                    let travel = (i * spacing + offset) % totalDist;
+                    if(travel < 0) travel += totalDist;
+
+                    let currentDist = 0;
+                    for(let j=0; j<lengths.length; j++) {
+                        if(travel >= currentDist && travel <= currentDist + lengths[j]) {
+                            let segmentProg = (travel - currentDist) / lengths[j];
+                            let px = points[j].x + (points[j+1].x - points[j].x) * segmentProg;
+                            let py = points[j].y + (points[j+1].y - points[j].y) * segmentProg;
+                            
+                            ctx.beginPath();
+                            ctx.arc(px, py, 3, 0, Math.PI*2);
+                            ctx.fill();
+                            break;
+                        }
+                        currentDist += lengths[j];
+                    }
+                }
+            };
+
+            drawDots(pathPoints, state.electronOffset);
+            drawDots(returnPoints, state.electronOffset);
+        }
+
+        function drawMotor(ctx) {
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w/2;
+            const cy = h/2;
+            const motorShiftX = 60; // Shift amount
+
+            // Magnets (Stator) - Shifted by motorShiftX
+            ctx.fillStyle = '#ef4444'; // Red
+            ctx.fillRect(cx + motorShiftX - 140, cy - 60, 40, 120);
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 22px sans-serif'; 
+            ctx.fillText("N", cx + motorShiftX - 128, cy + 7);
+
+            ctx.fillStyle = '#3b82f6'; // Blue
+            ctx.fillRect(cx + motorShiftX + 100, cy - 60, 40, 120);
+            ctx.fillStyle = 'white';
+            ctx.fillText("S", cx + motorShiftX + 112, cy + 7);
+
+            // Magnetic Field Lines - Shifted
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.2)';
+            ctx.setLineDash([5, 5]);
+            ctx.lineWidth = 1;
+            for(let i=-40; i<=40; i+=20) {
+                ctx.beginPath();
+                ctx.moveTo(cx + motorShiftX - 100, cy + i);
+                ctx.lineTo(cx + motorShiftX + 100, cy + i);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+
+            // Brushes - Shifted
+            ctx.fillStyle = '#d1d5db'; 
+            ctx.fillRect(cx + motorShiftX - 10, cy - 90, 20, 20); // Top
+            ctx.fillRect(cx + motorShiftX - 10, cy + 70, 20, 20); // Bottom
+
+            // ROTOR GROUP
+            ctx.save();
+            // Translate to the new shifted center
+            ctx.translate(cx + motorShiftX, cy);
+            
+            // 3D Perspective Rotation Effect
+            const cosA = Math.cos(state.angle);
+            const isFront = cosA > 0;
+
+            // Draw the Coil Loop
+            const coilWidth = 140 * cosA;
+            const coilHeight = 80;
+            
+            ctx.strokeStyle = isFront ? '#f59e0b' : '#b45309'; 
+            ctx.lineWidth = 8;
+            ctx.lineJoin = "round";
+            
+            ctx.beginPath();
+            ctx.rect(-coilWidth/2, -coilHeight/2, coilWidth, coilHeight);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawGraph(ctx) {
+            const w = ctx.canvas.width;
+            const h = ctx.canvas.height;
+            
+            // Clear
+            ctx.clearRect(0, 0, w, h);
+
+            // Grid settings
+            const zeroY = h / 2;
+            // Scale: 15Amps max to fit in half height
+            const scaleY = (h / 2) / 15; 
+
+            // Draw Grid Lines
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1;
+            
+            // Horizontal Center
+            ctx.beginPath();
+            ctx.moveTo(0, zeroY); ctx.lineTo(w, zeroY);
+            ctx.stroke();
+
+            // Draw Graph Line
+            ctx.strokeStyle = '#facc15'; // Yellow
+            ctx.lineWidth = 2;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+
+            const stepX = w / (CONSTANTS.historyPoints - 1);
+
+            for (let i = 0; i < state.history.length; i++) {
+                const current = state.history[i];
+                // Invert Y because canvas Y grows downwards
+                const y = zeroY - (current * scaleY); 
+                const x = i * stepX;
+
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            
+            // Highlight current point
+            const lastIdx = state.history.length - 1;
+            if(lastIdx >= 0) {
+                const lx = lastIdx * stepX;
+                const ly = zeroY - (state.history[lastIdx] * scaleY);
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath();
+                ctx.arc(lx, ly, 4, 0, Math.PI*2);
+                ctx.fill();
+            }
+        }
+
+        function updateUI() {
+            // RPM
+            const rpm = (state.angularVelocity * 60 / (2 * Math.PI)).toFixed(0);
+            ui.rpm.innerText = `${rpm} RPM`;
+            
+            // Adjust bar scale roughly for new speeds (increased divisor from 6 to 14)
+            let rpmPct = Math.min((state.angularVelocity / 14) * 100, 100);
+            ui.rpmBar.style.width = `${rpmPct}%`;
+
+            // Voltage Display
+            ui.vSource.innerText = state.on ? CONSTANTS.voltage.toFixed(1) + "V" : "0.0V";
+            ui.vEmf.innerText = state.backEMF.toFixed(1) + "V";
+            
+            // Net voltage
+            ui.vNet.innerText = state.netVoltage.toFixed(1) + "V";
+            if (state.netVoltage < 0) {
+                ui.vNet.classList.add('text-red-400');
+                ui.vNet.classList.remove('text-yellow-400');
+            } else {
+                ui.vNet.classList.remove('text-red-400');
+                ui.vNet.classList.add('text-yellow-400');
+            }
+
+            // Torque
+            ui.torque.innerText = state.torque.toFixed(2) + " Nm";
+
+            // Current Text
+            ui.current.innerText = state.current.toFixed(2) + " A";
+            if (state.current < 0) {
+                ui.current.classList.add('text-red-400');
+                ui.current.classList.remove('text-yellow-400');
+            } else {
+                ui.current.classList.remove('text-red-400');
+                ui.current.classList.add('text-yellow-400');
+            }
+
+            // Bidirectional Current Bar
+            // Max current is 12A. We want the bar to fill half width at max current (6A is 50%, 12A is 100% of half)
+            // Wait, slider is -12A ... 0 ... +12A
+            // Container is 100% wide. Center is 50%.
+            // 12A = 100% fill of one side (which is 50% of total width)
+            let maxCurrent = CONSTANTS.voltage / CONSTANTS.resistance; // 12A
+            let fillPct = (Math.abs(state.current) / maxCurrent) * 50; 
+            if (fillPct > 50) fillPct = 50; // Clamp
+
+            if (state.current >= 0) {
+                // Positive: grow right from center
+                ui.currentBar.style.left = '50%';
+                ui.currentBar.style.width = `${fillPct}%`;
+                ui.currentBar.classList.remove('bg-red-500');
+                ui.currentBar.classList.add('bg-yellow-400');
+            } else {
+                // Negative: grow left from center
+                // To grow left from center with 'left' property:
+                // left position = 50% - width
+                ui.currentBar.style.left = `${50 - fillPct}%`;
+                ui.currentBar.style.width = `${fillPct}%`;
+                ui.currentBar.classList.remove('bg-yellow-400');
+                ui.currentBar.classList.add('bg-red-500');
+            }
+
+            // Color coding the back EMF value
+            // Ensure we keep the text-4xl size
+            if(state.backEMF > 10) ui.vEmf.className = "text-red-500 font-bold text-4xl";
+            else ui.vEmf.className = "text-red-400 font-bold text-4xl";
+        }
+
+        function loop() {
+            // Calculate time delta since last frame
+            const now = performance.now();
+            if (!state.lastFrameTime) state.lastFrameTime = now;
+            
+            // Delta in seconds, capped at 0.1s to prevent huge jumps
+            const realDeltaSeconds = Math.min((now - state.lastFrameTime) / 1000, 0.1);
+            state.lastFrameTime = now;
+
+            // REAL-TIME ACCURACY: dt is exactly realDeltaSeconds.
+            const dt = realDeltaSeconds;
+
+            updatePhysics(dt);
+
+            // Clear
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawCircuit(ctx);
+            drawMotor(ctx);
+            drawElectrons(ctx);
+            drawGraph(graphCtx);
+            
+            updateUI();
+
+            requestAnimationFrame(loop);
+        }
+
+        // Initialize
+        state.lastFrameTime = performance.now();
+        loop();
+
+    </script>
+</body>
+</html>
