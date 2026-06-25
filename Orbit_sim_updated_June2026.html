@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Earth Satellite: Interactive Physics</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0a0e17;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #141b29;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+            border: 1px solid #2a364f;
+            width: 100%;
+            max-width: 900px;
+            margin-top: 20px;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            margin-bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+
+        canvas {
+            background: radial-gradient(circle at center, #0d1b2a 0%, #050a11 100%);
+            border-radius: 8px;
+            border: 1px solid #33415c;
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.5);
+            cursor: crosshair;
+        }
+
+        .controls-area {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            background: #1c2538;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 0.95em;
+            border: 1px solid #2a364f;
+        }
+
+        .data-item {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 12px;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            border-left: 3px solid #444;
+        }
+
+        .data-item label { 
+            display: block; 
+            color: #9aa5b1; 
+            font-size: 0.85em; 
+            margin-bottom: 5px; 
+            letter-spacing: 0.5px; 
+            white-space: nowrap;
+        }
+        
+        .data-item span { 
+            font-family: 'Courier New', Courier, monospace; 
+            font-weight: bold; 
+            font-size: 1.2em; 
+            color: #fff; 
+        }
+
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #4cc9f0; height: 8px; }
+        
+        .legend { font-size: 0.9em; color: #9aa5b1; display: flex; gap: 25px; justify-content: center; margin-top: 10px;}
+        .dot { width: 12px; height: 12px; display: inline-block; border-radius: 50%; margin-right: 8px; vertical-align: middle;}
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        
+        <div class="canvas-wrapper">
+            <canvas id="simCanvas" width="800" height="600"></canvas>
+        </div>
+
+        <div class="controls-area">
+            <div>
+                <label style="color:#cbd5e1; font-size: 1em; margin-bottom:8px; display:block; font-weight: bold;">Orbital Radius</label>
+                <input type="range" id="radiusSlider" min="6371000" max="45000000" step="10000" value="20000000">
+            </div>
+
+            <div class="data-grid">
+                <div class="data-item" style="border-left-color: #fff;">
+                    <label>Radius (r)</label>
+                    <span><span id="d_rad">0</span> m</span>
+                </div>
+                <div class="data-item" style="border-left-color: #a8dadc;">
+                    <label>Altitude</label>
+                    <span><span id="d_alt" style="color:#a8dadc">0</span> m</span>
+                </div>
+                <div class="data-item" style="border-left-color: #2ec4b6;">
+                    <label>Velocity (v)</label>
+                    <span><span id="d_vel" style="color:#2ec4b6">0</span> m/s</span>
+                </div>
+                <div class="data-item" style="border-left-color: #f1faee;">
+                    <label>Period (T)</label>
+                    <span><span id="d_period" style="color:#f1faee">0</span> hrs</span>
+                </div>
+
+                <div class="data-item" style="border-left-color: #ff9f1c;">
+                    <label>Grav. Force (Fg)</label>
+                    <span><span id="d_force" style="color:#ff9f1c">0</span> N</span>
+                </div>
+                <div class="data-item" style="border-left-color: #4cc9f0;">
+                    <label>Kinetic Energy (Ek)</label>
+                    <span><span id="d_ke" style="color:#4cc9f0">0</span> GJ</span>
+                </div>
+                <div class="data-item" style="border-left-color: #e71d36;">
+                    <label>Potential Energy (Ep)</label>
+                    <span><span id="d_pe" style="color:#e71d36">0</span> GJ</span>
+                </div>
+                <div class="data-item" style="border-left-color: #fca311;">
+                    <label>Total Energy(Et)</label>
+                    <span><span id="d_te" style="color:#fca311">0</span> GJ</span>
+                </div>
+            </div>
+
+            <div class="legend">
+                <span><span class="dot" style="background:#2ec4b6"></span>Velocity Vector</span>
+                <span><span class="dot" style="background:#ff9f1c"></span>Gravitational Force Vector</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Constants ---
+        const G = 6.67430e-11; 
+        const M = 5.972e24;    
+        const R_EARTH = 6.371e6; 
+        const SAT_MASS = 1000; 
+
+        // --- Sim Config ---
+        const REAL_DAY_SEC = 86400;
+        const SIM_DAY_SEC = 10;
+        const TIME_MULT = REAL_DAY_SEC / SIM_DAY_SEC;
+
+        // --- Elements ---
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const slider = document.getElementById('radiusSlider');
+
+        const elRad = document.getElementById('d_rad');
+        const elAlt = document.getElementById('d_alt');
+        const elVel = document.getElementById('d_vel');
+        const elPeriod = document.getElementById('d_period');
+        
+        const elForce = document.getElementById('d_force');
+        const elKE = document.getElementById('d_ke');
+        const elPE = document.getElementById('d_pe');
+        const elTE = document.getElementById('d_te');
+
+        // --- State ---
+        let radius = 20000000;
+        let satAngle = 0;
+        let earthAngle = 0;
+        let lastTime = performance.now();
+
+        // --- Visual Scaling ---
+        const ORBIT_CENTER_X = 400;
+        const ORBIT_CENTER_Y = 300;
+        const MAX_RENDER_R = 4.5e7; 
+        const PX_PER_M = 280 / MAX_RENDER_R; 
+
+        function formatGJ(joules) { return (joules / 1e9).toFixed(2); }
+        function formatNum(num) { return num.toLocaleString('en-US', { maximumFractionDigits: 0 }); }
+
+        // --- Helper: Draw Arrows ---
+        function drawArrow(ctx, fromX, fromY, toX, toY, color, width) {
+            const headlen = 20; 
+            const dx = toX - fromX;
+            const dy = toY - fromY;
+            const angle = Math.atan2(dy, dx);
+            
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.lineTo(toX, toY);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 7), toY - headlen * Math.sin(angle - Math.PI / 7));
+            ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 7), toY - headlen * Math.sin(angle + Math.PI / 7));
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+        }
+
+        function update(dt) {
+            radius = parseFloat(slider.value);
+
+            const v = Math.sqrt((G * M) / radius);
+            const force = (G * M * SAT_MASS) / (radius * radius);
+            const omega = v / radius;
+            const omegaSim = omega * TIME_MULT;
+            
+            const altitude = radius - R_EARTH;
+            const periodSeconds = (2 * Math.PI * radius) / v;
+            const periodHours = periodSeconds / 3600;
+
+            const ke = 0.5 * SAT_MASS * v * v;
+            const pe = -(G * M * SAT_MASS) / radius;
+            const te = ke + pe;
+
+            satAngle -= omegaSim * (dt / 1000);
+            earthAngle -= ((2*Math.PI)/10) * (dt / 1000);
+
+            elRad.innerText = radius.toExponential(2);
+            elAlt.innerText = formatNum(altitude);
+            elVel.innerText = formatNum(v);
+            elPeriod.innerText = periodHours.toFixed(2);
+            
+            elForce.innerText = formatNum(force);
+            elKE.innerText = formatGJ(ke);
+            elPE.innerText = formatGJ(pe);
+            elTE.innerText = formatGJ(te);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const rPx = radius * PX_PER_M;
+            const earthPx = R_EARTH * PX_PER_M;
+
+            ctx.save();
+            ctx.translate(ORBIT_CENTER_X, ORBIT_CENTER_Y);
+
+            // --- 1. Earth (Realistic North Pole View) ---
+            ctx.save();
+            ctx.rotate(earthAngle);
+            
+            const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, earthPx);
+            grd.addColorStop(0, '#0077b6'); 
+            grd.addColorStop(1, '#03045e'); 
+            ctx.beginPath();
+            ctx.arc(0, 0, earthPx, 0, Math.PI*2);
+            ctx.fillStyle = grd;
+            ctx.fill();
+
+            ctx.fillStyle = '#2d6a4f'; 
+            ctx.beginPath();
+            ctx.moveTo(-earthPx * 0.2, -earthPx * 0.5);
+            ctx.bezierCurveTo(-earthPx * 0.8, -earthPx * 0.6, -earthPx * 0.9, 0, -earthPx * 0.5, earthPx * 0.3);
+            ctx.bezierCurveTo(-earthPx * 0.2, earthPx * 0.2, -earthPx * 0.1, -earthPx * 0.2, -earthPx * 0.2, -earthPx * 0.5);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(earthPx * 0.4, earthPx * 0.3);
+            ctx.bezierCurveTo(earthPx * 0.9, earthPx * 0.6, earthPx, -earthPx * 0.4, earthPx * 0.4, -earthPx * 0.6);
+            ctx.bezierCurveTo(earthPx * 0.1, -earthPx * 0.2, earthPx * 0.1, earthPx * 0.2, earthPx * 0.4, earthPx * 0.3);
+            ctx.fill();
+
+            ctx.fillStyle = '#e0eaf5'; 
+            ctx.beginPath();
+            ctx.ellipse(-earthPx * 0.15, -earthPx * 0.35, earthPx * 0.15, earthPx * 0.25, Math.PI / 4, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.beginPath();
+            for (let i = 0; i < Math.PI * 2; i += 0.5) {
+                let r = earthPx * 0.3 + Math.sin(i * 4) * earthPx * 0.05 + Math.cos(i * 3) * earthPx * 0.08;
+                if (i === 0) ctx.moveTo(r * Math.cos(i), r * Math.sin(i));
+                else ctx.lineTo(r * Math.cos(i), r * Math.sin(i));
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            const atmos = ctx.createRadialGradient(0, 0, earthPx * 0.8, 0, 0, earthPx);
+            atmos.addColorStop(0, 'rgba(0, 245, 212, 0)');
+            atmos.addColorStop(1, 'rgba(0, 245, 212, 0.4)');
+            ctx.beginPath();
+            ctx.arc(0, 0, earthPx, 0, Math.PI*2);
+            ctx.fillStyle = atmos;
+            ctx.fill();
+
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#00f5d4';
+            ctx.strokeStyle = 'rgba(0, 245, 212, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.lineWidth = 1;
+            for (let r = 1; r < 4; r++) {
+                ctx.beginPath();
+                ctx.arc(0, 0, earthPx * (r / 4), 0, Math.PI*2);
+                ctx.stroke();
+            }
+            for (let i = 0; i < 12; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(Math.cos((i * Math.PI) / 6) * earthPx, Math.sin((i * Math.PI) / 6) * earthPx);
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // --- 2. Orbit Path ---
+            ctx.beginPath();
+            ctx.arc(0, 0, rPx, 0, Math.PI*2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([12, 12]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // --- 3. Smooth Vectors ---
+            const sx = Math.cos(satAngle) * rPx;
+            const sy = Math.sin(satAngle) * rPx;
+            
+            // Force Vector
+            const fAngle = satAngle + Math.PI;
+            const fStartX = sx + Math.cos(fAngle) * 15;
+            const fStartY = sy + Math.sin(fAngle) * 15;
+            const forceLen = 180 * Math.pow(6.371e6 / radius, 1.1); 
+            drawArrow(ctx, fStartX, fStartY, fStartX + Math.cos(fAngle)*forceLen, fStartY + Math.sin(fAngle)*forceLen, '#ff9f1c', 5);
+
+            // Velocity Vector
+            const vAngle = satAngle - Math.PI/2;
+            const vStartX = sx + Math.cos(vAngle) * 32;
+            const vStartY = sy + Math.sin(vAngle) * 32;
+            drawArrow(ctx, vStartX, vStartY, vStartX + Math.cos(vAngle)*120, vStartY + Math.sin(vAngle)*120, '#2ec4b6', 5);
+
+            // --- 4. Spaceship ---
+            ctx.save();
+            ctx.translate(sx, sy);
+            ctx.rotate(vAngle); 
+            
+            ctx.scale(1.3, 1.3);
+
+            // Top Fin
+            ctx.fillStyle = '#ff4d4d';
+            ctx.beginPath();
+            ctx.moveTo(-5, 8);
+            ctx.lineTo(-12, 18);
+            ctx.lineTo(-18, 18);
+            ctx.lineTo(-12, 8);
+            ctx.fill();
+
+            // Bottom Fin
+            ctx.beginPath();
+            ctx.moveTo(-5, -8);
+            ctx.lineTo(-12, -18);
+            ctx.lineTo(-18, -18);
+            ctx.lineTo(-12, -8);
+            ctx.fill();
+
+            // Fuselage
+            ctx.fillStyle = '#f8f9fa';
+            ctx.beginPath();
+            ctx.moveTo(25, 0); 
+            ctx.bezierCurveTo(15, 14, -10, 12, -18, 8); 
+            ctx.lineTo(-18, -8); 
+            ctx.bezierCurveTo(-10, -12, 15, -14, 25, 0); 
+            ctx.fill();
+
+            // Nose Cone
+            ctx.fillStyle = '#ff4d4d';
+            ctx.beginPath();
+            ctx.moveTo(25, 0);
+            ctx.bezierCurveTo(18, 5, 12, 8, 10, 9);
+            ctx.lineTo(10, -9);
+            ctx.bezierCurveTo(12, -8, 18, -5, 25, 0);
+            ctx.fill();
+
+            // Center Fin
+            ctx.fillStyle = '#d90429';
+            ctx.beginPath();
+            ctx.moveTo(-4, 0);
+            ctx.lineTo(-18, 4);
+            ctx.lineTo(-18, -4);
+            ctx.fill();
+
+            // Window Frame
+            ctx.fillStyle = '#ff4d4d';
+            ctx.beginPath();
+            ctx.arc(2, 0, 7, 0, Math.PI*2);
+            ctx.fill();
+
+            // Window Glass
+            ctx.fillStyle = '#00b4d8';
+            ctx.beginPath();
+            ctx.arc(2, 0, 4.5, 0, Math.PI*2);
+            ctx.fill();
+
+            // Window Reflection
+            ctx.fillStyle = '#caf0f8';
+            ctx.beginPath();
+            ctx.arc(0, -1.5, 1.5, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.restore();
+            ctx.restore();
+        }
+
+        function loop(timestamp) {
+            const dt = timestamp - lastTime;
+            lastTime = timestamp;
+
+            update(dt);
+            draw();
+
+            requestAnimationFrame(loop);
+        }
+
+        update(0); 
+        requestAnimationFrame(loop);
+
+    </script>
+</body>
+</html>
