@@ -28,6 +28,7 @@
             width: 100%;
             max-width: 900px;
             margin-top: 20px;
+            box-sizing: border-box; /* Ensures padding doesn't cause overflow on phones */
         }
 
         .canvas-wrapper {
@@ -44,6 +45,8 @@
             border: 1px solid #33415c;
             box-shadow: inset 0 0 40px rgba(0,0,0,0.5);
             cursor: crosshair;
+            max-width: 100%; /* Allows canvas to shrink on small screens */
+            height: auto;    /* Maintains correct aspect ratio */
         }
 
         .controls-area {
@@ -92,8 +95,38 @@
 
         input[type=range] { width: 100%; cursor: pointer; accent-color: #4cc9f0; height: 8px; }
         
-        .legend { font-size: 0.9em; color: #9aa5b1; display: flex; gap: 25px; justify-content: center; margin-top: 10px;}
+        .legend { 
+            font-size: 0.9em; 
+            color: #9aa5b1; 
+            display: flex; 
+            flex-wrap: wrap; /* Allows items to wrap on small screens */
+            gap: 15px; 
+            justify-content: center; 
+            margin-top: 10px;
+        }
+        
         .dot { width: 12px; height: 12px; display: inline-block; border-radius: 50%; margin-right: 8px; vertical-align: middle;}
+
+        /* --- Media Queries for Mobile Responsiveness --- */
+        @media (max-width: 768px) {
+            .data-grid {
+                grid-template-columns: repeat(2, 1fr); /* 2 columns on tablets/large phones */
+            }
+            .container {
+                padding: 15px; /* Slightly less padding on smaller screens */
+            }
+        }
+
+        @media (max-width: 480px) {
+            .data-grid {
+                grid-template-columns: 1fr; /* 1 column (vertical) on small phones */
+            }
+            .legend {
+                flex-direction: column;
+                align-items: center;
+                gap: 10px;
+            }
+        }
 
     </style>
 </head>
@@ -107,7 +140,7 @@
 
         <div class="controls-area">
             <div>
-                <label style="color:#cbd5e1; font-size: 1em; margin-bottom:8px; display:block; font-weight: bold;">Orbital Radius</label>
+                <label style="color:#cbd5e1; font-size: 1em; margin-bottom:8px; display:block; font-weight: bold;">Adjust Orbital Radius</label>
                 <input type="range" id="radiusSlider" min="6371000" max="45000000" step="10000" value="20000000">
             </div>
 
@@ -117,7 +150,7 @@
                     <span><span id="d_rad">0</span> m</span>
                 </div>
                 <div class="data-item" style="border-left-color: #a8dadc;">
-                    <label>Altitude</label>
+                    <label>Altitude (h)</label>
                     <span><span id="d_alt" style="color:#a8dadc">0</span> m</span>
                 </div>
                 <div class="data-item" style="border-left-color: #2ec4b6;">
@@ -130,19 +163,19 @@
                 </div>
 
                 <div class="data-item" style="border-left-color: #ff9f1c;">
-                    <label>Grav. Force (Fg)</label>
+                    <label>Grav. Force (F)</label>
                     <span><span id="d_force" style="color:#ff9f1c">0</span> N</span>
                 </div>
                 <div class="data-item" style="border-left-color: #4cc9f0;">
-                    <label>Kinetic Energy (Ek)</label>
+                    <label>Kinetic (KE)</label>
                     <span><span id="d_ke" style="color:#4cc9f0">0</span> GJ</span>
                 </div>
                 <div class="data-item" style="border-left-color: #e71d36;">
-                    <label>Potential Energy (Ep)</label>
+                    <label>Potential (PE)</label>
                     <span><span id="d_pe" style="color:#e71d36">0</span> GJ</span>
                 </div>
                 <div class="data-item" style="border-left-color: #fca311;">
-                    <label>Total Energy(Et)</label>
+                    <label>Total (TE)</label>
                     <span><span id="d_te" style="color:#fca311">0</span> GJ</span>
                 </div>
             </div>
