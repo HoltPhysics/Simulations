@@ -28,7 +28,7 @@
             width: 100%;
             max-width: 900px;
             margin-top: 20px;
-            box-sizing: border-box; /* Ensures padding doesn't cause overflow on phones */
+            box-sizing: border-box; 
         }
 
         .canvas-wrapper {
@@ -45,8 +45,8 @@
             border: 1px solid #33415c;
             box-shadow: inset 0 0 40px rgba(0,0,0,0.5);
             cursor: crosshair;
-            max-width: 100%; /* Allows canvas to shrink on small screens */
-            height: auto;    /* Maintains correct aspect ratio */
+            max-width: 100%; 
+            height: auto;    
         }
 
         .controls-area {
@@ -99,7 +99,7 @@
             font-size: 0.9em; 
             color: #9aa5b1; 
             display: flex; 
-            flex-wrap: wrap; /* Allows items to wrap on small screens */
+            flex-wrap: wrap; 
             gap: 15px; 
             justify-content: center; 
             margin-top: 10px;
@@ -110,16 +110,16 @@
         /* --- Media Queries for Mobile Responsiveness --- */
         @media (max-width: 768px) {
             .data-grid {
-                grid-template-columns: repeat(2, 1fr); /* 2 columns on tablets/large phones */
+                grid-template-columns: repeat(2, 1fr); 
             }
             .container {
-                padding: 15px; /* Slightly less padding on smaller screens */
+                padding: 15px; 
             }
         }
 
         @media (max-width: 480px) {
             .data-grid {
-                grid-template-columns: 1fr; /* 1 column (vertical) on small phones */
+                grid-template-columns: 1fr; 
             }
             .legend {
                 flex-direction: column;
@@ -231,11 +231,12 @@
 
         // --- Helper: Draw Arrows ---
         function drawArrow(ctx, fromX, fromY, toX, toY, color, width) {
-            const headlen = 20; 
+            const headlen = 22; 
             const dx = toX - fromX;
             const dy = toY - fromY;
             const angle = Math.atan2(dy, dx);
             
+            // Draw the main line of the vector
             ctx.beginPath();
             ctx.moveTo(fromX, fromY);
             ctx.lineTo(toX, toY);
@@ -243,11 +244,12 @@
             ctx.lineWidth = width;
             ctx.stroke();
             
+            // Draw the perfect triangle arrowhead
             ctx.beginPath();
-            ctx.moveTo(toX, toY);
-            ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 7), toY - headlen * Math.sin(angle - Math.PI / 7));
-            ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 7), toY - headlen * Math.sin(angle + Math.PI / 7));
-            ctx.closePath();
+            ctx.moveTo(toX, toY); // Pointy tip
+            ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 8), toY - headlen * Math.sin(angle - Math.PI / 8)); // Right corner
+            ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 8), toY - headlen * Math.sin(angle + Math.PI / 8)); // Left corner
+            ctx.closePath(); // Connects the base straight across
             ctx.fillStyle = color;
             ctx.fill();
         }
@@ -381,11 +383,15 @@
             const forceLen = 180 * Math.pow(6.371e6 / radius, 1.1); 
             drawArrow(ctx, fStartX, fStartY, fStartX + Math.cos(fAngle)*forceLen, fStartY + Math.sin(fAngle)*forceLen, '#ff9f1c', 5);
 
-            // Velocity Vector
+            // Velocity Vector (now dynamically scaled to the current velocity)
             const vAngle = satAngle - Math.PI/2;
             const vStartX = sx + Math.cos(vAngle) * 32;
             const vStartY = sy + Math.sin(vAngle) * 32;
-            drawArrow(ctx, vStartX, vStartY, vStartX + Math.cos(vAngle)*120, vStartY + Math.sin(vAngle)*120, '#2ec4b6', 5);
+            
+            const currentV = Math.sqrt((G * M) / radius);
+            const vLen = currentV * 0.015; // Visual multiplier for screen size
+            
+            drawArrow(ctx, vStartX, vStartY, vStartX + Math.cos(vAngle)*vLen, vStartY + Math.sin(vAngle)*vLen, '#2ec4b6', 5);
 
             // --- 4. Spaceship ---
             ctx.save();
